@@ -112,3 +112,51 @@ func (c *HttpClient) SendMessage(message string) error {
 
 	return nil
 }
+
+func (c *HttpClient) GetMessages() ([]byte, error) {
+    if c.socket == nil {
+        c.Close()
+        log.Debug("Socket was closed by remote party")
+        return nil, nil
+    }
+
+    var partialMessages []byte
+    
+    for {
+        // Read from socket
+        buf := make([]byte, 4096) // Common buffer size
+        n, err := c.socket.Read(buf)
+        if err != nil {
+            if err == io.EOF {
+                c.Close()
+                return partialMessages, nil
+            }
+            return nil, fmt.Errorf("error reading from socket: %v", err)
+        }
+
+        // Process the response
+        if len(partialMessages) == 0 {
+            // Check response status code (first message)
+            response := string(buf[:n])
+            if !strings.Contains(response, "200 OK") {
+                return nil, fmt.Errorf("error in response code: %s", response)
+            }
+            
+            // Skip headers and get to body
+            if idx := strings.Index(response, "\r\n\r\n"); idx != -1 {
+                partialMessages = append(partialMessages, buf[idx+4:n]...)
+            }
+        } else {
+            partialMessages = append(partialMessages, buf[:n]...)
+        }
+
+        log.Debug("Data received from HTTP query:", string(buf[:n]))
+        
+        // Check if message is complete
+        if strings.HasSuffix(string(buf[:n]), "\r\n\r\n") {
+            break
+        }
+    }
+
+    return partialMessages, nil
+}
