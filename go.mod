@@ -1,4 +1,4 @@
-module yourmodule
+module pyweb3
 
 go 1.20
 
