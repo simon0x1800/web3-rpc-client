@@ -53,10 +53,43 @@ func jsonRPCUnpack(buffer []byte) (string, interface{}, error) {
 	return id, result, nil
 }
 
+// JSONRPCRequest represents a JSON-RPC 2.0 request object
+type JSONRPCRequest struct {
+	JSONRPC string      `json:"jsonrpc"`
+	Method  string      `json:"method"`
+	Params  interface{} `json:"params"`
+	ID      string      `json:"id"`
+}
+
+// CreateJSONRPCRequest creates a new JSON-RPC 2.0 request and returns its encoded form
+func CreateJSONRPCRequest(method string, params interface{}, id string) (string, error) {
+	request := JSONRPCRequest{
+		JSONRPC: "2.0",
+		Method:  method,
+		Params:  params,
+		ID:      id,
+	}
+
+	return jsonEncode(request)
+}
+
 func main() {
 	// Example usage
 	log.Println("Starting JSON-RPC example...")
 
+	// Example of creating a request
+	params := map[string]interface{}{
+		"name":  "test",
+		"value": 123,
+	}
+
+	requestJSON, err := CreateJSONRPCRequest("test_method", params, "1")
+	if err != nil {
+		log.Fatalf("Error creating JSON-RPC request: %v", err)
+	}
+	log.Printf("Created request: %s", requestJSON)
+
+	// Original example code
 	exampleBuffer := []byte(`{"jsonrpc":"2.0","id":"1","result":"example result"}`)
 
 	id, result, err := jsonRPCUnpack(exampleBuffer)
@@ -66,4 +99,3 @@ func main() {
 
 	log.Printf("Response ID: %s, Result: %v", id, result)
 }
-
