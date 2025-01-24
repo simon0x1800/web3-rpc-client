@@ -155,31 +155,3 @@ func (ef *EventFilter) SubscribeLogs(ctx context.Context) (chan types.Log, ether
 	}
 	return logCh, sub, nil
 }
-
-func main() {
-	// Initialize Web3 client
-	client, _ := NewWeb3Client("https://...")
-
-	// Contract interaction
-	contractABI := `[{"constant":true,"inputs":[],"name":"name","outputs":[{"name":"","type":"string"}]}]`
-	contractAddr := common.HexToAddress("0x123...")
-
-	manager, _ := NewContractManager(client, contractABI, contractAddr)
-	result, _ := manager.CallMethod("name")
-
-	// Account management
-	accManager, _ := NewAccountManager("./keystore")
-	account, _ := accManager.CreateAccount("password123")
-
-	// Transaction building
-	builder, _ := NewTransactionBuilder(client, account.Address)
-	tx, _ := builder.BuildTransaction(
-		common.HexToAddress("0x456..."),
-		big.NewInt(1e18), // 1 ETH
-		nil,
-	)
-
-	// Sign and send transaction
-	signedTx, _ := accManager.SignTransaction(tx, account, "password123")
-	client.SendRawTransaction(signedTx)
-}
