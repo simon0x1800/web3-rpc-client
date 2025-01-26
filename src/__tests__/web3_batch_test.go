@@ -148,3 +148,94 @@ func TestBatchProcessor_ConcurrencyLimit(t *testing.T) {
 
 	mockClient.AssertExpectations(t)
 }
+
+func TestBatchProcessor_ErrorHandling(t *testing.T) {
+	mockClient := new(MockWeb3Client)
+	bp := NewBatchProcessor(mockClient, 10, 2)
+
+	from := common.HexToAddress("0x1234")
+	transfers := map[common.Address]*big.Int{
+		common.HexToAddress("0x5678"): big.NewInt(1000),
+		common.HexToAddress("0x9abc"): big.NewInt(2000),
+		common.HexToAddress("0xdef0"): big.NewInt(3000),
+	}
+
+	// Setup mock expectations with an error
+	tx1 := types.NewTransaction(0, common.Address{}, big.NewInt(0), 0, big.NewInt(0), nil)
+	mockClient.On("SendTransaction", from, common.HexToAddress("0x5678"), big.NewInt(1000)).Return(tx1, nil)
+	mockClient.On("SendTransaction", from, common.HexToAddress("0x9abc"), big.NewInt(2000)).Return(nil, fmt.Errorf("transaction failed"))
+	mockClient.On("SendTransaction", from, common.HexToAddress("0xdef0"), big.NewInt(3000)).Return(tx1, nil)
+
+	// Execute batch transfer
+	results := bp.BatchTransfer(from, transfers)
+
+	// Verify results
+	assert.Equal(t, 3, len(results))
+	assert.NoError(t, results[0].Error)
+	assert.Error(t, results[1].Error)
+	assert.Equal(t, "transaction failed", results[1].Error.Error())
+	assert.NoError(t, results[2].Error)
+	mockClient.AssertExpectations(t)
+}
+
+func TestBatchProcessor_BatchSizeLimit(t *testing.T) {
+	mockClient := new(MockWeb3Client)
+	batchSize := 3
+	bp := NewBatchProcessor(mockClient, batchSize, 2)
+
+	from := common.HexToAddress("0x1234")
+	transfers := make(map[common.Address]*big.Int)
+
+	// Create more transfers than the batch size
+	for i := 0; i < 5; i++ {
+		addr := common.HexToAddress(fmt.Sprintf("0x%d", i))
+		transfers[addr] = big.NewInt(int64(i+1) * 1000)
+		tx := types.NewTransaction(uint64(i), common.Address{}, big.NewInt(0), 0, big.NewInt(0), nil)
+		mockClient.On("SendTransaction", from, addr, transfers[addr]).Return(tx, nil)
+	}
+
+	// Execute batch transfer
+	results := bp.BatchTransfer(from, transfers)
+
+	// Verify results
+	assert.Equal(t, 5, len(results))
+	assert.Equal(t, 2, len(mockClient.Calls)/3) // Should have processed in 2 batches
+	mockClient.AssertExpectations(t)
+}
+
+func TestEventFilter_EmptyResults(t *testing.T) {
+	mockClient := new(MockWeb3Client)
+	ef := NewEventFilter(mockClient)
+
+	ctx := context.Background()
+	expectedLogs := []types.Log{}
+
+	mockClient.On("FilterLogs", ctx, ef.query).Return(expectedLogs, nil)
+	logs, err := ef.GetLogs(ctx)
+
+	assert.NoError(t, err)
+	assert.Empty(t, logs)
+	mockClient.AssertExpectations(t)
+}
+
+func TestEventFilter_ContextCancellation(t *testing.T) {
+	mockClient := new(MockWeb3Client)
+	ef := NewEventFilter(mockClient)
+
+	// Create a context with cancellation
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	mockSub := new(MockSubscription)
+	errCh := make(chan error)
+	mockSub.On("Err").Return(errCh)
+
+	mockClient.On("SubscribeFilterLogs", ctx, ef.query, mock.AnyChan()).Return(mockSub, context.Canceled)
+
+	_, _, err := ef.SubscribeLogs(ctx)
+	assert.Error(t, err)
+	assert.Equal(t, context.Canceled, err)
+
+	mockClient.AssertExpectations(t)
+	mockSub.AssertExpectations(t)
+}
